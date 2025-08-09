@@ -17,23 +17,23 @@ pipeline {
         stage('Build JAR') {
             steps {
                 echo 'Building Spring Boot application...'
-                sh 'mvn clean package -DskipTests'
+                bat 'mvn clean package -DskipTests'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 echo 'Building Docker image...'
-                sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                bat "docker build -t %DOCKER_IMAGE%:%DOCKER_TAG% ."
             }
         }
 
         stage('Stop and Remove Old Container') {
             steps {
                 echo 'Stopping old container if exists...'
-                sh """
-                    docker stop ${CONTAINER_NAME} || true
-                    docker rm ${CONTAINER_NAME} || true
+                bat """
+                docker stop %CONTAINER_NAME% || exit 0
+                docker rm %CONTAINER_NAME% || exit 0
                 """
             }
         }
@@ -41,7 +41,7 @@ pipeline {
         stage('Run Docker Container') {
             steps {
                 echo 'Running new Docker container...'
-                sh "docker run -d --name ${CONTAINER_NAME} -p 8080:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                bat "docker run -d --name %CONTAINER_NAME% -p 8080:8080 %DOCKER_IMAGE%:%DOCKER_TAG%"
             }
         }
     }
