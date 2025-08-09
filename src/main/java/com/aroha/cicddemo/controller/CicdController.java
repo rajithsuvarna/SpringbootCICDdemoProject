@@ -11,7 +11,7 @@ public class CicdController {
 
 	@GetMapping
 	public ResponseEntity<String> demoMethod(){
-		return ResponseEntity.ok("Running Successfuly");
+		return ResponseEntity.ok("Jenkins demo Running Successfuly");
 	}
 	
 }
