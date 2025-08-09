@@ -13,10 +13,11 @@ pipeline {
     stages {
         stage('Deploy to EC2') {
             steps {
-                sshagent(['ec2-ssh-key']) { // SSH key stored in Jenkins credentials
+                // Use SSH private key directly from Jenkins credentials
+                withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
-                        # Install prerequisites if not installed
+                    ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${EC2_HOST} '
+                        # Install prerequisites
                         sudo apt-get update -y &&
                         sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
                         sudo systemctl start docker &&
