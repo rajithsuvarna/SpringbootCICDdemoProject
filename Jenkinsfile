@@ -11,34 +11,34 @@ pipeline {
     }
 
     stages {
+        stage('Build Locally on Windows') {
+            steps {
+                bat """
+                    mvn clean package -DskipTests
+                """
+            }
+        }
+
         stage('Deploy to EC2') {
             steps {
-                // Use SSH private key directly from Jenkins credentials
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
-                    sh """
-                    ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${EC2_HOST} '
-                        # Install prerequisites
-                        sudo apt-get update -y &&
-                        sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
-                        sudo systemctl start docker &&
-                        sudo systemctl enable docker &&
-                        sudo usermod -aG docker ubuntu &&
-
-                        # Get latest source code
-                        if [ ! -d ${APP_DIR} ]; then
-                            git clone ${REPO_URL} ${APP_DIR};
-                        else
-                            cd ${APP_DIR} && git pull;
-                        fi &&
-
-                        # Build and run Docker
-                        cd ${APP_DIR} &&
-                        mvn clean package -DskipTests &&
-                        docker stop ${CONTAINER_NAME} || true &&
-                        docker rm ${CONTAINER_NAME} || true &&
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
-                        docker run -d --name ${CONTAINER_NAME} -p 8081:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    '
+                    bat """
+                        ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no ${EC2_HOST} "sudo apt-get update -y &&
+                            sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
+                            sudo systemctl start docker &&
+                            sudo systemctl enable docker &&
+                            sudo usermod -aG docker ubuntu &&
+                            if [ ! -d ${APP_DIR} ]; then
+                                git clone ${REPO_URL} ${APP_DIR};
+                            else
+                                cd ${APP_DIR} && git pull;
+                            fi &&
+                            cd ${APP_DIR} &&
+                            mvn clean package -DskipTests &&
+                            docker stop ${CONTAINER_NAME} || true &&
+                            docker rm ${CONTAINER_NAME} || true &&
+                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
+                            docker run -d --name ${CONTAINER_NAME} -p 8081:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     """
                 }
             }
