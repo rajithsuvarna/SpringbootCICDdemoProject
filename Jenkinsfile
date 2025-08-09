@@ -23,21 +23,23 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     bat """
-                        ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no ${EC2_HOST} "sudo apt-get update -y &&
-                            sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
-                            sudo systemctl start docker &&
-                            sudo systemctl enable docker &&
-                            sudo usermod -aG docker ubuntu &&
-                            if [ ! -d ${APP_DIR} ]; then
-                                git clone ${REPO_URL} ${APP_DIR};
-                            else
-                                cd ${APP_DIR} && git pull;
-                            fi &&
-                            cd ${APP_DIR} &&
-                            mvn clean package -DskipTests &&
-                            docker stop ${CONTAINER_NAME} || true &&
-                            docker rm ${CONTAINER_NAME} || true &&
-                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
+                        REM Fix SSH key permissions on Windows so SSH won't complain
+                        icacls "%SSH_KEY%" /inheritance:r
+                        icacls "%SSH_KEY%" /grant:r "%USERNAME%:R"
+
+                        REM Run deployment commands over SSH
+                        ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
+                            "sudo apt-get update -y && ^
+                            sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
+                            sudo systemctl start docker && ^
+                            sudo systemctl enable docker && ^
+                            sudo usermod -aG docker ubuntu && ^
+                            if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && ^
+                            cd ${APP_DIR} && ^
+                            mvn clean package -DskipTests && ^
+                            docker stop ${CONTAINER_NAME} || true && ^
+                            docker rm ${CONTAINER_NAME} || true && ^
+                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && ^
                             docker run -d --name ${CONTAINER_NAME} -p 8081:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     """
                 }
