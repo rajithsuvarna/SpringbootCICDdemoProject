@@ -2,56 +2,54 @@ pipeline {
     agent any
 
     environment {
+        EC2_HOST = 'ubuntu@65.0.29.129'
+        APP_DIR = 'springboot-cicd-demo'
+        REPO_URL = 'https://github.com/rajithsuvarna/SpringbootCICDdemoProject.git'
         DOCKER_IMAGE = 'springboot-cicd-demo'
         DOCKER_TAG = 'latest'
         CONTAINER_NAME = 'springboot-demo-container'
     }
 
     stages {
-        stage('Checkout SCM') {
+        stage('Deploy to EC2') {
             steps {
-                git branch: 'main', url: 'https://github.com/rajithsuvarna/SpringbootCICDdemoProject.git'
-            }
-        }
+                sshagent(['ec2-ssh-key']) { // SSH key stored in Jenkins credentials
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
+                        # Install prerequisites if not installed
+                        sudo apt-get update -y &&
+                        sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
+                        sudo systemctl start docker &&
+                        sudo systemctl enable docker &&
+                        sudo usermod -aG docker ubuntu &&
 
-        stage('Build JAR') {
-            steps {
-                echo 'Building Spring Boot application...'
-                bat 'mvn clean package -DskipTests'
-            }
-        }
+                        # Get latest source code
+                        if [ ! -d ${APP_DIR} ]; then
+                            git clone ${REPO_URL} ${APP_DIR};
+                        else
+                            cd ${APP_DIR} && git pull;
+                        fi &&
 
-        stage('Build Docker Image') {
-            steps {
-                echo 'Building Docker image...'
-                bat "docker build -t %DOCKER_IMAGE%:%DOCKER_TAG% ."
-            }
-        }
-
-        stage('Stop and Remove Old Container') {
-            steps {
-                echo 'Stopping old container if exists...'
-                bat """
-                docker stop %CONTAINER_NAME% || exit 0
-                docker rm %CONTAINER_NAME% || exit 0
-                """
-            }
-        }
-
-        stage('Run Docker Container') {
-            steps {
-                echo 'Running new Docker container...'
-                bat "docker run -d --name %CONTAINER_NAME% -p 8081:8080 %DOCKER_IMAGE%:%DOCKER_TAG%"
+                        # Build and run Docker
+                        cd ${APP_DIR} &&
+                        mvn clean package -DskipTests &&
+                        docker stop ${CONTAINER_NAME} || true &&
+                        docker rm ${CONTAINER_NAME} || true &&
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
+                        docker run -d --name ${CONTAINER_NAME} -p 8081:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    '
+                    """
+                }
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline executed successfully!'
+            echo '✅ Deployment successful!'
         }
         failure {
-            echo 'Pipeline failed. Check logs for details.'
+            echo '❌ Deployment failed. Check EC2 logs.'
         }
     }
 }
