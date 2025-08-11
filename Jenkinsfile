@@ -20,10 +20,14 @@ pipeline {
         stage('Fix SSH Key Permissions') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                    // More aggressive permission locking
                     bat """
+                        icacls "%SSH_KEY%" /reset
                         icacls "%SSH_KEY%" /inheritance:r
-                        icacls "%SSH_KEY%" /grant:r "%USERNAME%":(R)
+                        icacls "%SSH_KEY%" /grant:r "%USERNAME%":F
                         icacls "%SSH_KEY%" /remove "BUILTIN\\Users"
+                        icacls "%SSH_KEY%" /remove "Everyone"
+                        icacls "%SSH_KEY%"
                     """
                 }
             }
@@ -32,21 +36,21 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                    // Using Plink (PuTTY) instead of OpenSSH on Windows for better reliability
                     bat """
-                        ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% "
-                            sudo apt-get update -y &&
-                            sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
-                            sudo systemctl start docker &&
-                            sudo systemctl enable docker &&
-                            sudo usermod -aG docker ubuntu &&
-                            if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi &&
-                            cd ${APP_DIR} &&
-                            mvn clean package -DskipTests &&
-                            (docker stop ${CONTAINER_NAME} || true) &&
-                            (docker rm ${CONTAINER_NAME} || true) &&
-                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
-                            docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        "
+                        echo y | plink -i "%SSH_KEY%" -ssh %EC2_HOST% ^
+                            "sudo apt-get update -y && ^
+                            sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
+                            sudo systemctl start docker && ^
+                            sudo systemctl enable docker && ^
+                            sudo usermod -aG docker ubuntu && ^
+                            if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && ^
+                            cd ${APP_DIR} && ^
+                            mvn clean package -DskipTests && ^
+                            (docker stop ${CONTAINER_NAME} || true) && ^
+                            (docker rm ${CONTAINER_NAME} || true) && ^
+                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && ^
+                            docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     """
                 }
             }
@@ -54,11 +58,11 @@ pipeline {
     }
 
     post {
-        success {
-            echo '✅ Deployment successful!'
-        }
         failure {
             echo '❌ Deployment failed. Check EC2 logs.'
+        }
+        success {
+            echo '✅ Deployment successful!'
         }
     }
 }
