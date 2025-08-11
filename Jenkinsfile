@@ -11,43 +11,63 @@ pipeline {
     }
 
     stages {
-        stage('Build Locally on Windows') {
+        stage('Build Locally') {
             steps {
-                bat """
-                    mvn clean package -DskipTests
-                """
+                script {
+                    if (isUnix()) {
+                        sh 'mvn clean package -DskipTests'
+                    } else {
+                        bat 'mvn clean package -DskipTests'
+                    }
+                }
             }
         }
 
         stage('Deploy to EC2') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
-                    bat """
-                        REM Remove inherited permissions
-                        icacls "%SSH_KEY%" /inheritance:r
+                    script {
+                        if (isUnix()) {
+                            sh '''
+                                chmod 600 "$SSH_KEY"
+                                ssh -v -i "$SSH_KEY" -o StrictHostKeyChecking=no $EC2_HOST '
+                                    sudo apt-get update -y &&
+                                    sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
+                                    sudo systemctl start docker &&
+                                    sudo systemctl enable docker &&
+                                    sudo usermod -aG docker ubuntu &&
+                                    if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi &&
+                                    cd ${APP_DIR} &&
+                                    mvn clean package -DskipTests &&
+                                    docker stop ${CONTAINER_NAME} || true &&
+                                    docker rm ${CONTAINER_NAME} || true &&
+                                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
+                                    docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
+                                '
+                            '''
+                        } else {
+                            bat '''
+                                icacls "%SSH_KEY%" /inheritance:r
+                                icacls "%SSH_KEY%" /grant:r "NT AUTHORITY\\SYSTEM:F"
+                                icacls "%SSH_KEY%" /remove "BUILTIN\\Users"
+                                icacls "%SSH_KEY%" /remove "Everyone"
 
-                        REM Grant full control to LocalSystem (Jenkins default service account)
-                        icacls "%SSH_KEY%" /grant:r "NT AUTHORITY\\SYSTEM:F"
-
-                        REM Remove overly permissive groups
-                        icacls "%SSH_KEY%" /remove "BUILTIN\\Users"
-                        icacls "%SSH_KEY%" /remove "Everyone"
-
-                        REM Run deployment commands on EC2
-                        ssh -v -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
-                            "sudo apt-get update -y && ^
-                            sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
-                            sudo systemctl start docker && ^
-                            sudo systemctl enable docker && ^
-                            sudo usermod -aG docker ubuntu && ^
-                            if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && ^
-                            cd ${APP_DIR} && ^
-                            mvn clean package -DskipTests && ^
-                            docker stop ${CONTAINER_NAME} || true && ^
-                            docker rm ${CONTAINER_NAME} || true && ^
-                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && ^
-                            docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
-                    """
+                                ssh -v -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
+                                    "sudo apt-get update -y && ^
+                                    sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
+                                    sudo systemctl start docker && ^
+                                    sudo systemctl enable docker && ^
+                                    sudo usermod -aG docker ubuntu && ^
+                                    if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && ^
+                                    cd ${APP_DIR} && ^
+                                    mvn clean package -DskipTests && ^
+                                    docker stop ${CONTAINER_NAME} || true && ^
+                                    docker rm ${CONTAINER_NAME} || true && ^
+                                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && ^
+                                    docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                            '''
+                        }
+                    }
                 }
             }
         }
