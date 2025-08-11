@@ -21,27 +21,22 @@ pipeline {
 
         stage('Deploy to EC2') {
             steps {
-                // Use SSH credentials stored in Jenkins
-                sshagent(['ec2-ssh-key']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
-                            sudo apt-get update -y &&
-                            sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
-                            sudo systemctl start docker &&
-                            sudo systemctl enable docker &&
-                            sudo usermod -aG docker ubuntu &&
-                            if [ ! -d ${APP_DIR} ]; then
-                                git clone ${REPO_URL} ${APP_DIR};
-                            else
-                                cd ${APP_DIR} && git pull;
-                            fi &&
-                            cd ${APP_DIR} &&
-                            mvn clean package -DskipTests &&
-                            docker stop ${CONTAINER_NAME} || true &&
-                            docker rm ${CONTAINER_NAME} || true &&
-                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
-                            docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        '
+                withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                    bat """
+                        REM Run deployment commands over SSH (no icacls needed)
+                        ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
+                            "sudo apt-get update -y && ^
+                            sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
+                            sudo systemctl start docker && ^
+                            sudo systemctl enable docker && ^
+                            sudo usermod -aG docker ubuntu && ^
+                            if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && ^
+                            cd ${APP_DIR} && ^
+                            mvn clean package -DskipTests && ^
+                            docker stop ${CONTAINER_NAME} || true && ^
+                            docker rm ${CONTAINER_NAME} || true && ^
+                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && ^
+                            docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     """
                 }
             }
