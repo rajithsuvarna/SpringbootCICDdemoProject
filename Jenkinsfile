@@ -13,68 +13,52 @@ pipeline {
     stages {
         stage('Build Locally on Windows') {
             steps {
-                bat 'mvn clean package -DskipTests'
+                bat """
+                    mvn clean package -DskipTests
+                """
             }
         }
 
         stage('Deploy to EC2') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
-                    script {
-                        // Create a temporary key file with correct permissions
-                        def tempKey = "${env.WORKSPACE}\\temp_key"
-                        bat """
-                            copy "%SSH_KEY%" "${tempKey}"
-                            icacls "${tempKey}" /reset
-                            icacls "${tempKey}" /inheritance:r
-                            icacls "${tempKey}" /grant:r "%USERNAME%":F
-                            icacls "${tempKey}" /remove "BUILTIN\\Users"
-                            icacls "${tempKey}" /remove "Everyone"
-                            icacls "${tempKey}"
-                        """
+                    bat """
+                        REM Remove inherited permissions
+                        icacls "%SSH_KEY%" /inheritance:r
 
-                        // Prepare commands
-                        def commands = """
-                            sudo apt-get update -y &&
-                            sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
-                            sudo systemctl start docker &&
-                            sudo systemctl enable docker &&
-                            sudo usermod -aG docker ubuntu &&
-                            if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi &&
-                            cd ${APP_DIR} &&
-                            mvn clean package -DskipTests &&
-                            (docker stop ${CONTAINER_NAME} || true) &&
-                            (docker rm ${CONTAINER_NAME} || true) &&
-                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
-                            docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        """.replace('\n', ' ').trim()
+                        REM Grant full control to LocalSystem (Jenkins default service account)
+                        icacls "%SSH_KEY%" /grant:r "NT AUTHORITY\\SYSTEM:F"
 
-                        // Execute SSH with the temporary key
-                        bat """
-                            ssh -i "${tempKey}" -o StrictHostKeyChecking=no %EC2_HOST% "${commands}"
-                        """
-                    }
+                        REM Remove overly permissive groups
+                        icacls "%SSH_KEY%" /remove "BUILTIN\\Users"
+                        icacls "%SSH_KEY%" /remove "Everyone"
+
+                        REM Run deployment commands on EC2
+                        ssh -v -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
+                            "sudo apt-get update -y && ^
+                            sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
+                            sudo systemctl start docker && ^
+                            sudo systemctl enable docker && ^
+                            sudo usermod -aG docker ubuntu && ^
+                            if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && ^
+                            cd ${APP_DIR} && ^
+                            mvn clean package -DskipTests && ^
+                            docker stop ${CONTAINER_NAME} || true && ^
+                            docker rm ${CONTAINER_NAME} || true && ^
+                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && ^
+                            docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                    """
                 }
             }
         }
     }
 
     post {
-        always {
-            script {
-                // Clean up temporary key
-                bat """
-                    if exist "${env.WORKSPACE}\\temp_key" (
-                        del /F /Q "${env.WORKSPACE}\\temp_key"
-                    )
-                """
-            }
+        success {
+            echo '✅ Deployment successful!'
         }
         failure {
             echo '❌ Deployment failed. Check EC2 logs.'
-        }
-        success {
-            echo '✅ Deployment successful!'
         }
     }
 }
