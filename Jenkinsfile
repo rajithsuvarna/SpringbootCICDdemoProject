@@ -40,7 +40,7 @@ pipeline {
                             docker stop ${CONTAINER_NAME} || true && ^
                             docker rm ${CONTAINER_NAME} || true && ^
                             docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && ^
-                            docker run -d --name ${CONTAINER_NAME} -p 8081:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                            docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     """
                 }
             }
