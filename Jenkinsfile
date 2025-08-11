@@ -21,17 +21,19 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     script {
-                        // Fix key permissions using SYSTEM account (always available)
+                        // Create a temporary key file with correct permissions
+                        def tempKey = "${env.WORKSPACE}\\temp_key"
                         bat """
-                            icacls "%SSH_KEY%" /reset
-                            icacls "%SSH_KEY%" /inheritance:r
-                            icacls "%SSH_KEY%" /grant:r "SYSTEM":F
-                            icacls "%SSH_KEY%" /remove "BUILTIN\\Users"
-                            icacls "%SSH_KEY%" /remove "Everyone"
-                            icacls "%SSH_KEY%" /grant:r "%USERNAME%":F
+                            copy "%SSH_KEY%" "${tempKey}"
+                            icacls "${tempKey}" /reset
+                            icacls "${tempKey}" /inheritance:r
+                            icacls "${tempKey}" /grant:r "%USERNAME%":F
+                            icacls "${tempKey}" /remove "BUILTIN\\Users"
+                            icacls "${tempKey}" /remove "Everyone"
+                            icacls "${tempKey}"
                         """
 
-                        // Prepare commands (single line to avoid Windows parsing issues)
+                        // Prepare commands
                         def commands = """
                             sudo apt-get update -y &&
                             sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
@@ -47,9 +49,9 @@ pipeline {
                             docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
                         """.replace('\n', ' ').trim()
 
-                        // Execute SSH with proper escaping
+                        // Execute SSH with the temporary key
                         bat """
-                            ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% "${commands}"
+                            ssh -i "${tempKey}" -o StrictHostKeyChecking=no %EC2_HOST% "${commands}"
                         """
                     }
                 }
@@ -58,9 +60,18 @@ pipeline {
     }
 
     post {
+        always {
+            script {
+                // Clean up temporary key
+                bat """
+                    if exist "${env.WORKSPACE}\\temp_key" (
+                        del /F /Q "${env.WORKSPACE}\\temp_key"
+                    )
+                """
+            }
+        }
         failure {
             echo '❌ Deployment failed. Check EC2 logs.'
-            bat 'icacls "%SSH_KEY%"'  // Debug: Show final permissions
         }
         success {
             echo '✅ Deployment successful!'
