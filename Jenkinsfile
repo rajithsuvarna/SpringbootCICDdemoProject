@@ -11,6 +11,20 @@ pipeline {
     }
 
     stages {
+        stage('Install PuTTY Tools') {
+            steps {
+                bat '''
+                    if not exist "C:\\Program Files\\PuTTY" (
+                        echo Installing PuTTY...
+                        curl -o putty.exe -L https://the.earth.li/~sgtatham/putty/latest/w64/putty.exe
+                        curl -o plink.exe -L https://the.earth.li/~sgtatham/putty/latest/w64/plink.exe
+                        start /wait putty.exe /silent
+                        move plink.exe "C:\\Windows\\System32"
+                    )
+                '''
+            }
+        }
+
         stage('Build Locally on Windows') {
             steps {
                 bat 'mvn clean package -DskipTests'
@@ -20,14 +34,12 @@ pipeline {
         stage('Fix SSH Key Permissions') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
-                    // More aggressive permission locking
                     bat """
                         icacls "%SSH_KEY%" /reset
                         icacls "%SSH_KEY%" /inheritance:r
                         icacls "%SSH_KEY%" /grant:r "%USERNAME%":F
                         icacls "%SSH_KEY%" /remove "BUILTIN\\Users"
                         icacls "%SSH_KEY%" /remove "Everyone"
-                        icacls "%SSH_KEY%"
                     """
                 }
             }
@@ -36,7 +48,6 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
-                    // Using Plink (PuTTY) instead of OpenSSH on Windows for better reliability
                     bat """
                         echo y | plink -i "%SSH_KEY%" -ssh %EC2_HOST% ^
                             "sudo apt-get update -y && ^
