@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        EC2_HOST = 'ubuntu@13.126.161.113'
+        EC2_HOST = 'ubuntu@13.127.144.195'
         APP_DIR = 'springboot-cicd-demo'
         REPO_URL = 'https://github.com/rajithsuvarna/SpringbootCICDdemoProject.git'
         DOCKER_IMAGE = 'springboot-cicd-demo'
