@@ -1,6 +1,20 @@
 #!/bin/bash
 set -e
 
+echo "🚀 Updating system packages..."
+sudo apt-get update -y
+
+echo "📦 Installing dependencies..."
+sudo apt-get install -y docker.io git openjdk-17-jdk maven
+
+echo "🐳 Ensuring Docker is running..."
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker ubuntu
+
+echo "📂 Navigating to project directory..."
+cd "$(dirname "$0")"
+
 echo "🚀 Building Spring Boot app..."
 mvn clean package -DskipTests
 

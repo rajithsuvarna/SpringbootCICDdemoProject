@@ -16,12 +16,11 @@ pipeline {
                             sh '''
                                 chmod 600 "$SSH_KEY"
                                 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no $EC2_HOST '
-                                    sudo apt-get update -y &&
-                                    sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
-                                    sudo systemctl start docker &&
-                                    sudo systemctl enable docker &&
-                                    sudo usermod -aG docker ubuntu &&
-                                    if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi &&
+                                    if [ ! -d ${APP_DIR} ]; then
+                                        git clone ${REPO_URL} ${APP_DIR}
+                                    else
+                                        cd ${APP_DIR} && git pull
+                                    fi &&
                                     cd ${APP_DIR} &&
                                     chmod +x deploy.sh &&
                                     ./deploy.sh
@@ -35,15 +34,7 @@ pipeline {
                                 icacls "%SSH_KEY%" /remove "Everyone"
 
                                 ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
-                                    "sudo apt-get update -y && ^
-                                    sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
-                                    sudo systemctl start docker && ^
-                                    sudo systemctl enable docker && ^
-                                    sudo usermod -aG docker ubuntu && ^
-                                    if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && ^
-                                    cd ${APP_DIR} && ^
-                                    chmod +x deploy.sh && ^
-                                    ./deploy.sh"
+                                "if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && cd ${APP_DIR} && chmod +x deploy.sh && ./deploy.sh"
                             """
                         }
                     }
