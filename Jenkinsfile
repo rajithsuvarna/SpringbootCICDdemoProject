@@ -3,11 +3,6 @@ pipeline {
 
     environment {
         EC2_HOST = 'ubuntu@13.127.144.195'
-        APP_DIR = 'springboot-cicd-demo'
-        REPO_URL = 'https://github.com/rajithsuvarna/SpringbootCICDdemoProject.git'
-        DOCKER_IMAGE = 'springboot-cicd-demo'
-        DOCKER_TAG = 'latest'
-        CONTAINER_NAME = 'springboot-demo-container'
     }
 
     stages {
@@ -30,20 +25,8 @@ pipeline {
                         if (isUnix()) {
                             sh '''
                                 chmod 600 "$SSH_KEY"
-                                ssh -v -i "$SSH_KEY" -o StrictHostKeyChecking=no $EC2_HOST '
-                                    sudo apt-get update -y &&
-                                    sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
-                                    sudo systemctl start docker &&
-                                    sudo systemctl enable docker &&
-                                    sudo usermod -aG docker ubuntu &&
-                                    if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi &&
-                                    cd ${APP_DIR} &&
-                                    mvn clean package -DskipTests &&
-                                    docker stop ${CONTAINER_NAME} || true &&
-                                    docker rm ${CONTAINER_NAME} || true &&
-                                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . &&
-                                    docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
-                                '
+                                scp -o StrictHostKeyChecking=no -i "$SSH_KEY" deploy.sh $EC2_HOST:/home/ubuntu/deploy.sh
+                                ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no $EC2_HOST "chmod +x /home/ubuntu/deploy.sh && /home/ubuntu/deploy.sh"
                             '''
                         } else {
                             bat '''
@@ -52,19 +35,8 @@ pipeline {
                                 icacls "%SSH_KEY%" /remove "BUILTIN\\Users"
                                 icacls "%SSH_KEY%" /remove "Everyone"
 
-                                ssh -v -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
-                                    "sudo apt-get update -y && ^
-                                    sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
-                                    sudo systemctl start docker && ^
-                                    sudo systemctl enable docker && ^
-                                    sudo usermod -aG docker ubuntu && ^
-                                    if [ ! -d ${APP_DIR} ]; then git clone ${REPO_URL} ${APP_DIR}; else cd ${APP_DIR} && git pull; fi && ^
-                                    cd ${APP_DIR} && ^
-                                    mvn clean package -DskipTests && ^
-                                    docker stop ${CONTAINER_NAME} || true && ^
-                                    docker rm ${CONTAINER_NAME} || true && ^
-                                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} . && ^
-                                    docker run -d --name ${CONTAINER_NAME} -p 8085:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                                pscp -i "%SSH_KEY%" deploy.sh %EC2_HOST%:/home/ubuntu/deploy.sh
+                                ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% "chmod +x /home/ubuntu/deploy.sh && /home/ubuntu/deploy.sh"
                             '''
                         }
                     }
