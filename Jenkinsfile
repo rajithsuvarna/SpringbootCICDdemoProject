@@ -5,24 +5,9 @@ pipeline {
         EC2_HOST = 'ubuntu@13.127.144.195'
         APP_DIR = 'springboot-cicd-demo'
         REPO_URL = 'https://github.com/rajithsuvarna/SpringbootCICDdemoProject.git'
-        DOCKER_IMAGE = 'springboot-cicd-demo'
-        DOCKER_TAG = 'latest'
-        CONTAINER_NAME = 'springboot-demo-container'
     }
 
     stages {
-        stage('Build Locally') {
-            steps {
-                script {
-                    if (isUnix()) {
-                        sh 'mvn clean package -DskipTests'
-                    } else {
-                        bat 'mvn clean package -DskipTests'
-                    }
-                }
-            }
-        }
-
         stage('Deploy to EC2') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY')]) {
@@ -30,7 +15,7 @@ pipeline {
                         if (isUnix()) {
                             sh '''
                                 chmod 600 "$SSH_KEY"
-                                ssh -v -i "$SSH_KEY" -o StrictHostKeyChecking=no $EC2_HOST '
+                                ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no $EC2_HOST '
                                     sudo apt-get update -y &&
                                     sudo apt-get install -y docker.io git openjdk-17-jdk maven &&
                                     sudo systemctl start docker &&
@@ -49,7 +34,7 @@ pipeline {
                                 icacls "%SSH_KEY%" /remove "BUILTIN\\Users"
                                 icacls "%SSH_KEY%" /remove "Everyone"
 
-                                ssh -v -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
+                                ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_HOST% ^
                                     "sudo apt-get update -y && ^
                                     sudo apt-get install -y docker.io git openjdk-17-jdk maven && ^
                                     sudo systemctl start docker && ^
